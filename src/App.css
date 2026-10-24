@@ -204,11 +204,11 @@ h1 {
 }
 
 .memory-card img {
-  width: min(100%, 16rem);
-  aspect-ratio: 9 / 16;
-  height: auto;
+  width: min(100%, 18rem);
+  height: 28.45rem;
   margin-inline: auto;
   object-fit: cover;
+  object-position: center center;
   display: block;
   padding: 0.4rem;
   border: 1px solid rgba(222, 185, 195, 0.42);

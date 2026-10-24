@@ -52,7 +52,7 @@ const memories = [
   'IMG_4426.jpeg', 'IMG_4541.jpeg', 'IMG_4551.jpeg', 'IMG_4586.jpeg', 'IMG_4607.jpeg',
   'IMG_4697.jpeg', 'IMG_4698.jpeg', 'IMG_4979.jpeg', 'IMG_5379.jpeg',
 ].map((filename, index) => ({
-  image: `/${filename}`,
+  image: `/memories-web/${filename.replace(/\.(jpe?g|png)$/i, '.webp')}`,
   note: memoryNotes[index % memoryNotes.length],
 }))
 
@@ -114,6 +114,8 @@ const quizQuestions = [
   },
 ]
 
+const QUIZ_WORKER_URL = 'https://yellow-frog-2895.meshramvibhor.workers.dev/api/quiz'
+
 function RevealSection({ children, className, ...sectionProps }) {
   const sectionRef = useRef(null)
 
@@ -156,6 +158,7 @@ function App() {
   )
   const [quizStep, setQuizStep] = useState(0)
   const [quizStatus, setQuizStatus] = useState('idle')
+  const [quizError, setQuizError] = useState('')
   const touchStartX = useRef(null)
 
   const nextMemory = () => setActiveIndex((index) => (index + 1) % memories.length)
@@ -185,17 +188,28 @@ function App() {
     }
 
     setQuizStatus('sending')
+    setQuizError('')
+
+    const answers = quizQuestions.map(({ id, prompt }) => ({
+      question: prompt,
+      answer: quizAnswers[id],
+    }))
 
     try {
-      const response = await fetch('/api/quiz', {
+      const response = await fetch(QUIZ_WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(quizAnswers),
+        body: JSON.stringify({ answers }),
       })
 
-      if (!response.ok) throw new Error('Quiz email could not be sent')
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}))
+        throw new Error(result.error || `Worker returned ${response.status}`)
+      }
+
       setQuizStatus('sent')
-    } catch {
+    } catch (error) {
+      setQuizError(error instanceof Error ? error.message : 'Could not reach the quiz service.')
       setQuizStatus('error')
     }
   }
@@ -282,7 +296,12 @@ function App() {
               onTouchEnd={handleTouchEnd}
             >
               <article className="memory-card active" aria-live="polite">
-                <img src={activeMemory.image} alt="A photo from our memories" />
+                <img
+                  src={activeMemory.image}
+                  alt="A photo from our memories"
+                  loading="lazy"
+                  decoding="async"
+                />
                 <div className="memory-caption">
                   <p>{activeMemory.note}</p>
                 </div>
@@ -335,7 +354,7 @@ function App() {
             <>
               <p className="eyebrow">One tiny quiz 💌</p>
               <h2 id="quiz-title">Assignment time, madam 😏</h2>
-              <p className="quiz-disclosure">Your answers will be saved in the private server logs for Vibhor to read 💛</p>
+              <p className="quiz-disclosure">Your answers will be sent securely to Vibhor’s quiz logger 💛</p>
               <form className="quiz-form" onSubmit={submitQuiz}>
                 <div className="quiz-question" key={activeQuestion.id}>
                   <p className="quiz-step-label">A little question {quizStep + 1} ✨</p>
@@ -378,7 +397,11 @@ function App() {
                         : 'Next question'}
                   </button>
                 </div>
-                {quizStatus === 'error' && <p className="quiz-feedback quiz-error" role="alert">Oops, they didn’t submit. Please try again.</p>}
+                {quizStatus === 'error' && (
+                  <p className="quiz-feedback quiz-error" role="alert">
+                    Couldn’t submit: {quizError}
+                  </p>
+                )}
               </form>
             </>
           )}

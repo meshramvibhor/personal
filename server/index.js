@@ -31,10 +31,16 @@ const requestsByIp = new Map()
 app.use(express.json({ limit: '10kb' }))
 
 app.post('/api/quiz', async (request, response) => {
+  console.info(JSON.stringify({
+    event: 'quiz.submission.received',
+    timestamp: new Date().toISOString(),
+  }))
+
   const now = Date.now()
   const recentRequests = (requestsByIp.get(request.ip) ?? []).filter((time) => now - time < 10 * 60 * 1000)
 
   if (recentRequests.length >= 5) {
+    console.warn(JSON.stringify({ event: 'quiz.submission.rejected', reason: 'rate_limit' }))
     return response.status(429).json({ error: 'Too many quiz submissions. Please try again later.' })
   }
 
@@ -44,6 +50,7 @@ app.post('/api/quiz', async (request, response) => {
   const answers = request.body
 
   if (!answers || typeof answers !== 'object' || Array.isArray(answers)) {
+    console.warn(JSON.stringify({ event: 'quiz.submission.rejected', reason: 'invalid_payload' }))
     return response.status(400).json({ error: 'Invalid quiz answers.' })
   }
 
@@ -53,15 +60,24 @@ app.post('/api/quiz', async (request, response) => {
     receivedKeys.some((key) => !allowedAnswers.has(key)) ||
     [...allowedAnswers].some((key) => typeof answers[key] !== 'string' || answers[key].trim().length === 0 || answers[key].length > 600)
   ) {
+    console.warn(JSON.stringify({
+      event: 'quiz.submission.rejected',
+      reason: 'incomplete_or_unexpected_answers',
+      receivedKeys,
+    }))
     return response.status(400).json({ error: 'Please complete every quiz answer.' })
   }
 
-  const submittedAt = new Date().toLocaleString()
-  const formattedAnswers = Object.entries(questionLabels)
-    .map(([key, label], index) => `${index + 1}. ${label}\n   ${answers[key].trim()}`)
-    .join('\n\n')
+  const submittedAt = new Date().toISOString()
+  const formattedAnswers = Object.fromEntries(
+    Object.entries(questionLabels).map(([key, label]) => [label, answers[key].trim()]),
+  )
 
-  console.log(`\n========== QUIZ ANSWERS (${submittedAt}) ==========\n${formattedAnswers}\n===================================================\n`)
+  console.info(JSON.stringify({
+    event: 'quiz.answers.submitted',
+    timestamp: submittedAt,
+    answers: formattedAnswers,
+  }))
 
   return response.json({ ok: true })
 })
